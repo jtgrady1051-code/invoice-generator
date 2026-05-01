@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, Trash2, Download, Eye, Zap, ChevronDown, X } from 'lucide-react';
+import { Plus, Trash2, Download, Eye, Zap, ChevronDown, X, Send } from 'lucide-react';
 
 // ── PDF PRINT STYLES injected into document head ──
 const PDF_STYLES = `
@@ -362,6 +362,7 @@ export default function InvoiceGenerator() {
   const [showHistory, setShowHistory] = useState(false);
   const [history, setHistory] = useState([]);
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [sendLoading, setSendLoading] = useState(false);
   const [toast, setToast] = useState(null);
 
   useEffect(() => {
@@ -462,6 +463,38 @@ export default function InvoiceGenerator() {
       return updated;
     });
   }, []);
+
+  const handleSendInvoice = useCallback(async () => {
+    if (!inv.clientEmail) {
+      showToast('Please add client email before sending.', 'error');
+      return;
+    }
+    setSendLoading(true);
+    try {
+      const res = await fetch('/api/send-invoice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ invoice: inv }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        if (data.emailSent) {
+          showToast(`Invoice sent to ${inv.clientEmail}!`);
+        } else {
+          showToast(`Payment link created! Email failed — link: ${data.paymentLink}`, 'error');
+        }
+        saveToHistory({ ...inv });
+        const nextNum = parseInt(inv.number.replace('INV-', '')) + 1;
+        setInv(prev => ({ ...prev, number: 'INV-' + String(nextNum).padStart(3, '0') }));
+      } else {
+        showToast(data.error || 'Failed to send invoice.', 'error');
+      }
+    } catch (e) {
+      console.error(e);
+      showToast('Failed to send — check your connection.', 'error');
+    }
+    setSendLoading(false);
+  }, [inv, saveToHistory]);
 
   const handleDownload = useCallback(async () => {
     setPdfLoading(true);
@@ -699,9 +732,13 @@ export default function InvoiceGenerator() {
           <button style={S.btnPreview} onClick={() => setShowPreview(true)}>
             <Eye size={16} /> Preview
           </button>
-          <button style={{ ...S.btnDownload, opacity: pdfLoading ? 0.6 : 1 }} onClick={handleDownload} disabled={pdfLoading}>
+          <button style={{ ...S.btnDownload, opacity: pdfLoading ? 0.6 : 1, background: 'transparent', border: '1px solid #FF6B2B', color: '#FF6B2B' }} onClick={handleDownload} disabled={pdfLoading}>
             <Download size={16} />
-            {pdfLoading ? 'Generating PDF...' : 'Download PDF'}
+            {pdfLoading ? 'Generating...' : 'Download PDF'}
+          </button>
+          <button style={{ ...S.btnDownload, opacity: sendLoading ? 0.6 : 1, flex: 2 }} onClick={handleSendInvoice} disabled={sendLoading}>
+            <Send size={16} />
+            {sendLoading ? 'Sending...' : 'Send Invoice'}
           </button>
         </div>
       </div>
